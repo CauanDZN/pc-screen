@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>PC Screen — controle</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 32px; background: #0a0a0f; color: #eee;
+    font: 15px/1.4 system-ui, sans-serif; max-width: 560px;
+  }
+  h1 { font-size: 20px; font-weight: 600; margin: 0 0 4px; }
+  p.sub { opacity: .6; margin: 0 0 28px; font-size: 13px; }
+  .row { margin-bottom: 20px; }
+  label { display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 13px; opacity: .85; }
+  label b { color: #3fd4ff; font-weight: 500; }
+  input[type=range] { width: 100%; accent-color: #ff3fa4; }
+  .hint { font-size: 12px; opacity: .5; margin-top: 4px; }
+  .links { margin-top: 32px; padding-top: 20px; border-top: 1px solid #222; font-size: 13px; }
+  .links a { color: #3fd4ff; display: block; margin: 4px 0; word-break: break-all; }
+  #status { margin-top: 16px; font-size: 13px; min-height: 18px; }
+  #status.err { color: #ff6b6b; }
+  #status.ok { color: #6bff9e; }
+</style>
+</head>
+<body>
+  <h1>PC Screen</h1>
+  <p class="sub">Muda na hora, sem reiniciar o servidor.</p>
+
+  <div class="row">
+    <label>Video — FPS <b id="fpsVal"></b></label>
+    <input type="range" id="fps" min="1" max="60" step="1">
+  </div>
+  <div class="row">
+    <label>Video — Qualidade JPEG <b id="qualityVal"></b></label>
+    <input type="range" id="quality" min="1" max="95" step="1">
+    <div class="hint">Mais baixo = menos banda, mais artefato visual.</div>
+  </div>
+  <div class="row">
+    <label>Video — Escala <b id="scaleVal"></b></label>
+    <input type="range" id="scale" min="0.1" max="1" step="0.05">
+    <div class="hint">Resolucao enviada em relacao a nativa.</div>
+  </div>
+  <div class="row">
+    <label>Audio — Bitrate (kbps) <b id="audio_bitrateVal"></b></label>
+    <input type="range" id="audio_bitrate" min="32" max="320" step="16">
+  </div>
+  <div class="row">
+    <label>Audio — Buffer (ms) <b id="audio_buffer_msVal"></b></label>
+    <input type="range" id="audio_buffer_ms" min="30" max="1000" step="10">
+    <div class="hint">Maior = mais estavel, mais atraso. Menor = mais responsivo, mais risco de engasgo.</div>
+  </div>
+  <div class="row">
+    <label>Audio — Defasagem manual (ms) <b id="audio_delay_msVal"></b></label>
+    <input type="range" id="audio_delay_ms" min="-2000" max="2000" step="10">
+    <div class="hint">Positivo atrasa o audio em relacao ao video (lido pelo app da TV).</div>
+  </div>
+
+  <div id="status"></div>
+
+  <div class="links">
+    <a href="/stream.mjpg" target="_blank">/stream.mjpg</a>
+    <a href="/audio.mp3" target="_blank">/audio.mp3</a>
+  </div>
+
+<script>
+(function () {
+  var FIELDS = ["fps", "quality", "scale", "audio_bitrate", "audio_buffer_ms", "audio_delay_ms"];
+  var statusEl = document.getElementById("status");
+  var timers = {};
+
+  function showStatus(text, cls) {
+    statusEl.textContent = text;
+    statusEl.className = cls || "";
+  }
+
+  function refreshLabel(field, value) {
+    document.getElementById(field + "Val").textContent = value;
+  }
+
+  function load() {
+    fetch("/config").then(function (r) { return r.json(); }).then(function (cfg) {
+      FIELDS.forEach(function (f) {
+        document.getElementById(f).value = cfg[f];
+        refreshLabel(f, cfg[f]);
+      });
+    }).catch(function () { showStatus("Nao consegui ler /config.", "err"); });
+  }
+
+  function send(field, value) {
+    var patch = {};
+    patch[field] = Number(value);
+    fetch("/config", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) })
+      .then(function (r) { return r.json().then(function (body) { return { ok: r.ok, body: body }; }); })
+      .then(function (res) {
+        if (!res.ok) { showStatus(res.body.error || "erro", "err"); return; }
+        showStatus("aplicado", "ok");
+      })
+      .catch(function () { showStatus("falha ao aplicar", "err"); });
+  }
+
+  FIELDS.forEach(function (field) {
+    var el = document.getElementById(field);
+    el.addEventListener("input", function () {
+      refreshLabel(field, el.value);
+      clearTimeout(timers[field]);
+      // debounce: nao manda uma requisicao por pixel arrastado no slider
+      timers[field] = setTimeout(function () { send(field, el.value); }, 150);
+    });
+  });
+
+  load();
+})();
+</script>
+</body>
+</html>
